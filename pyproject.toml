@@ -41,4 +41,3 @@ classifiers = [
 ]
 
 urls = { "Homepage" = "https://github.com/ASKabalan/jax-grid-search" }
-
