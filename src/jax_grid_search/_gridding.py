@@ -9,7 +9,6 @@ from tqdm import tqdm
 
 logger = logging.getLogger('GRIDDING')
 
-
 class DistributedGridSearch:
 
     def __init__(
@@ -55,6 +54,7 @@ class DistributedGridSearch:
 
         # Automatically determine batch size if None
         if self.batch_size is None:
+            print(f"passing here")
             if jax.devices()[0].platform == 'cpu':
                 logger.warning("""
                 Batch size not specified and automatic batch size
@@ -165,7 +165,6 @@ class DistributedGridSearch:
         """
         # Prepare a list to hold batches of results
         batch_results = {key: [] for key in self.param_keys}
-        batch_results['value'] = []
 
         rank = jax.process_index()
         size = jax.process_count()
@@ -192,11 +191,20 @@ class DistributedGridSearch:
             values = jax.vmap(lambda **kwargs: self.objective_fn(**kwargs))(
                 **param_arrays)
 
+            if not isinstance(values, dict):
+                raise ValueError("The objective function must return a dictionary.")
+
+            # Initialize keys in batch_results for values if not already present
+            for key in values:
+                if key not in batch_results:
+                    batch_results[key] = []
+
             # Store the results as arrays
             for i, param_dict in enumerate(param_dicts):
                 for key in param_dict:
                     batch_results[key].append(param_dict[key])
-                batch_results['value'].append(values[i])
+                for key, val in values.items():
+                    batch_results[key].append(val[i])
 
             # Log progress if verbose
             if self.log_every > 0:
@@ -221,10 +229,13 @@ class DistributedGridSearch:
             for key, value in batch_results.items()
         }
 
-        # Optional: Sort the results based on the "value"
-        sorted_results = {
-            key: value[stacked_results['value'].argsort()]
-            for key, value in stacked_results.items()
-        }
+        # Optional: Sort the results based on the "value" if it exists
+        if 'value' in stacked_results:
+            sorted_results = {
+                key: value[stacked_results['value'].argsort()]
+                for key, value in stacked_results.items()
+            }
+        else:
+            sorted_results = stacked_results
 
         return sorted_results
