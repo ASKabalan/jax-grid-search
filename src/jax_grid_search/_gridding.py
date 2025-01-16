@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 logger = logging.getLogger('GRIDDING')
 
+
 class DistributedGridSearch:
 
     def __init__(
@@ -192,7 +193,8 @@ class DistributedGridSearch:
                 **param_arrays)
 
             if not isinstance(values, dict):
-                raise ValueError("The objective function must return a dictionary.")
+                raise ValueError(
+                    "The objective function must return a dictionary.")
 
             # Initialize keys in batch_results for values if not already present
             for key in values:
