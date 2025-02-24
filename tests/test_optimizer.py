@@ -1,9 +1,8 @@
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import jax._src.interpreters.ad
+    pass
 
-import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
@@ -13,7 +12,7 @@ from jax_grid_search import optimize
 
 
 # Define a simple quadratic function: f(x) = (x - 3)^2
-def quadratic(x: "jax._src.interpreters.ad.JVPTracer") -> "jax._src.interpreters.ad.JVPTracer":
+def quadratic(x):
     return jnp.sum((x - 3.0) ** 2)
 
 
