@@ -3,29 +3,37 @@ import itertools
 import logging
 import os
 import pickle
+import sys
+from typing import Any, Callable, Dict, Iterator, Optional
+
+if sys.version_info < (3, 11):
+    from typing_extensions import Self
+else:
+    from typing import Self
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+from jaxtyping import Array
+from numpy import dtype, ndarray
 from scipy.interpolate import interp1d
 from tqdm import tqdm
 
-logger = logging.getLogger('GRIDDING')
+logger = logging.getLogger("GRIDDING")
 
 
 class DistributedGridSearch:
-
     def __init__(
-        self,
-        objective_fn,
-        search_space,
-        batch_size=None,
-        memory_limit=0.6,
-        log_every=0.1,
-        progress_bar=True,
-        result_dir="results",
-        old_results=None,
-    ):
+        self: Self,
+        objective_fn: Callable[..., Dict[str, Array]],
+        search_space: Dict[str, Array],
+        batch_size: Optional[int] = None,
+        memory_limit: float = 0.6,
+        log_every: float = 0.1,
+        progress_bar: bool = True,
+        result_dir: str = "results",
+        old_results: Optional[Dict[str, Array]] = None,
+    ) -> None:
         """
         Initialize the grid search.
 
@@ -59,8 +67,9 @@ class DistributedGridSearch:
 
         if self.n_combinations % jax.process_count() != 0:
             raise ValueError(
-                f'Number of combinations ({self.n_combinations}) must be evenly divisible '
-                f'by the number of processes ({jax.process_count()}).')
+                f"Number of combinations ({self.n_combinations}) must be evenly divisible "
+                f"by the number of processes ({jax.process_count()})."
+            )
 
         self.batch_size = batch_size
         self.log_every = log_every
@@ -68,32 +77,32 @@ class DistributedGridSearch:
 
         # Automatically determine batch size if None
         if self.batch_size is None:
-            if jax.devices()[0].platform == 'cpu':
-                logger.warning("""
-                Batch size not specified and automatic batch size
-                determination is not supported on CPU.
-                Falling back to default batch size of 64.
-                """)
+            if jax.devices()[0].platform == "cpu":
+                logger.warning(
+                    """
+                    Batch size not specified and automatic batch size
+                    determination is not supported on CPU.
+                    Falling back to default batch size of 64.
+                    """
+                )
                 self.batch_size = 64
             else:
                 self.batch_size = int(self.suggest_batch_size() * memory_limit)
 
         # Make sure that batch size is less than (self.n_combinations // jax.process_count())
         # and that it is a divisor of (self.n_combinations // jax.process_count()
-
         if self.batch_size > (self.n_combinations // jax.process_count()):
             self.batch_size = self.n_combinations // jax.process_count()
 
-        if not self.batch_size == 0:
-            while (self.n_combinations //
-                   jax.process_count()) % self.batch_size != 0:
+        if self.batch_size != 0:
+            while (self.n_combinations // jax.process_count()) % self.batch_size != 0:
                 self.batch_size -= 1
 
         os.makedirs(self.result_dir, exist_ok=True)
 
-        print(f'Selecting batch size of {self.batch_size}')
+        print(f"Selecting batch size of {self.batch_size}")
 
-    def suggest_batch_size(self):
+    def suggest_batch_size(self: Self) -> int:
         """
         Estimate the largest feasible batch size based on device memory constraints.
 
@@ -101,8 +110,11 @@ class DistributedGridSearch:
             The estimated maximum batch size.
         """
         memory_stats = jax.devices()[0].memory_stats()
-        max_device_memory = memory_stats['bytes_limit'] - memory_stats[
-            'bytes_in_use']
+        if memory_stats is None:
+            print("Memory stats not available, defaulting to batch size 64.")
+            return 64
+
+        max_device_memory = memory_stats["bytes_limit"] - memory_stats["bytes_in_use"]
 
         test_batch_sizes = [2, 4, 8, 16, 32]
         memory_usages = []
@@ -111,25 +123,23 @@ class DistributedGridSearch:
             try:
                 memory_usages.append(self._measure_memory_usage(batch_size))
             except Exception as e:
-                print(
-                    f'Error measuring memory for batch size {batch_size}: {e}')
+                print(f"Error measuring memory for batch size {batch_size}: {e}")
                 break
 
         if len(memory_usages) < 2:
-            raise ValueError(
-                'Not enough data points to interpolate memory usage.')
+            raise ValueError("Not enough data points to interpolate memory usage.")
 
         interpolator = interp1d(
             memory_usages,
-            test_batch_sizes[:len(memory_usages)],
-            kind='linear',
-            fill_value='extrapolate',
+            test_batch_sizes[: len(memory_usages)],
+            kind="linear",
+            fill_value="extrapolate",
         )
 
         max_batch_size = int(interpolator(max_device_memory))
         return max_batch_size
 
-    def _measure_memory_usage(self, batch_size):
+    def _measure_memory_usage(self: Self, batch_size: int) -> int:
         """
         Measure memory usage of the objective function for a given batch size.
 
@@ -139,32 +149,27 @@ class DistributedGridSearch:
         Returns:
             Estimated memory usage in bytes.
         """
-        param_sample = {
-            key: np.array([val[0]] * batch_size)
-            for key, val in self.search_space.items()
-        }
+        param_sample = {key: np.array([val[0]] * batch_size) for key, val in self.search_space.items()}
 
-        mem_analysis = (jax.jit(jax.vmap(self.objective_fn)).lower(
-            **param_sample).compile().memory_analysis())
+        mem_analysis = jax.jit(jax.vmap(self.objective_fn)).lower(**param_sample).compile().memory_analysis()
 
-        return (mem_analysis.argument_size_in_bytes +
-                mem_analysis.output_size_in_bytes +
-                mem_analysis.temp_size_in_bytes)
+        arg_size: int = mem_analysis.argument_size_in_bytes  # type: ignore[union-attr]
+        out_size: int = mem_analysis.output_size_in_bytes  # type: ignore[union-attr]
+        temp_size: int = mem_analysis.temp_size_in_bytes  # type: ignore[union-attr]
 
-    def _batch_generator(self, indx=0, size=1):
+        return arg_size + out_size + temp_size
+
+    def _batch_generator(self: Self, indx: int = 0, size: int = 1) -> Iterator[list[tuple[Array, Array, Array, Array]]]:
         """Generates batches of parameter combinations."""
-        current_slice_combinations = self.combinations[indx *
-                                                       self.n_combinations //
-                                                       size:(indx + 1) *
-                                                       self.n_combinations //
-                                                       size]
-        n_batches = len(current_slice_combinations) // self.batch_size
+        current_slice_combinations = self.combinations[indx * self.n_combinations // size : (indx + 1) * self.n_combinations // size]
+        batch_size: int = self.batch_size  # type: ignore[assignment]
+
+        n_batches = len(current_slice_combinations) // batch_size
 
         for i in range(n_batches):
-            yield current_slice_combinations[i * self.batch_size:(i + 1) *
-                                             self.batch_size]
+            yield current_slice_combinations[i * batch_size : (i + 1) * batch_size]
 
-    def run(self):
+    def run(self: Self) -> None:
         """
         Run the grid search.
 
@@ -175,30 +180,27 @@ class DistributedGridSearch:
         assert self.batch_size is not None
 
         total_batches = len(self.combinations) // (self.batch_size * size)
-        log_interval = max(1, int(self.log_every *
-                                  total_batches)) if self.log_every > 0 else 0
+        log_interval = max(1, int(self.log_every * total_batches)) if self.log_every > 0 else 0
 
-        progress_bar = tqdm(
-            total=total_batches,
-            desc='Processing batches') if self.progress_bar else None
+        progress_bar = tqdm(total=total_batches, desc=f"Processing batches on device {rank}/{size}") if self.progress_bar else None
+
+        sample_batch = next(self._batch_generator(rank, size))
+        sample_params = {key: np.array([val[0] for val in values]) for key, values in zip(self.param_keys, sample_batch)}
+        # check if function returns a dictionary with value
+        sample_result = jax.eval_shape(self.objective_fn, **sample_params)
+        if not isinstance(sample_result, dict) or "value" not in sample_result:
+            raise KeyError("The objective function must return a dictionary with a 'value' key.")
 
         for batch_idx, batch in enumerate(self._batch_generator(rank, size)):
-            param_dicts = [
-                dict(zip(self.param_keys, combo)) for combo in batch
-            ]
-            param_arrays = {
-                key: jnp.array([d[key] for d in param_dicts])
-                for key in self.param_keys
-            }
+            param_dicts = [dict(zip(self.param_keys, combo)) for combo in batch]
+            param_arrays = {key: jnp.array([d[key] for d in param_dicts]) for key in self.param_keys}
 
-            values = jax.vmap(lambda **kwargs: self.objective_fn(**kwargs))(
-                **param_arrays)
+            values = jax.vmap(lambda **kwargs: self.objective_fn(**kwargs))(**param_arrays)
 
             if not isinstance(values, dict):
-                raise ValueError(
-                    "The objective function must return a dictionary.")
+                raise ValueError("The objective function must return a dictionary.")
 
-            batch_results = {key: [] for key in self.param_keys}
+            batch_results: dict[str, list[Array]] = {key: [] for key in self.param_keys}
 
             for i, param_dict in enumerate(param_dicts):
                 for key in param_dict:
@@ -209,17 +211,14 @@ class DistributedGridSearch:
                     batch_results[key].append(val[i])
 
             batch_log = self.batch_idx + batch_idx
-            result_file = os.path.join(
-                self.result_dir, f'result_batch_{batch_log}_rank_{rank}.pkl')
-            with open(result_file, 'wb') as f:
+            result_file = os.path.join(self.result_dir, f"result_batch_{batch_log}_rank_{rank}.pkl")
+            with open(result_file, "wb") as f:
                 pickle.dump(batch_results, f)
 
             del batch_results
 
             if log_interval > 0 and (batch_idx + 1) % log_interval == 0:
-                logger.info(
-                    f'Rank {rank}: Processed {batch_idx + 1}/{total_batches} batches.'
-                )
+                logger.info(f"Rank {rank}: Processed {batch_idx + 1}/{total_batches} batches.")
 
             if progress_bar:
                 progress_bar.update(1)
@@ -227,16 +226,13 @@ class DistributedGridSearch:
         if progress_bar:
             progress_bar.close()
 
-    def reduce_search_space(self, search_space, results):
+    def reduce_search_space(self: Self, search_space: dict[str, Array], results: dict[str, Array]) -> None:
         """
         Reduce the search space by removing combinations already processed.
 
         Args:
             search_space: A dictionary where keys are parameter names and values are arrays of possible values.
             results: A dictionary where keys match search_space keys and values are arrays of completed results.
-
-        Returns:
-            A dictionary with reduced search space containing only unique combinations yet to be processed.
         """
         # Generate all possible combinations from the search space
         param_names = list(search_space.keys())
@@ -244,27 +240,16 @@ class DistributedGridSearch:
         for key in param_names:
             completed_param_results[key] = results[key]
 
-        #return completed_param_results
         # Create set of completed combinations from the results
-        completed_combinations = list(
-            zip(*[
-                results[key].reshape(-1, results[key].shape[-1])
-                for key in param_names
-            ]))
+        completed_combinations = list(zip(*[results[key].reshape(-1, results[key].shape[-1]) for key in param_names]))
 
-        filter_set = {
-            tuple(tuple(arr.tolist()) for arr in tup)
-            for tup in completed_combinations
-        }
+        filter_set = {tuple(tuple(arr.tolist()) for arr in tup) for tup in completed_combinations}
 
-        reduced_combinations = [
-            tup for tup in self.combinations if tuple(
-                tuple(arr.tolist()) for arr in tup) not in filter_set
-        ]
+        reduced_combinations = [tup for tup in self.combinations if tuple(tuple(arr.tolist()) for arr in tup) not in filter_set]
         self.combinations = reduced_combinations
 
     @staticmethod
-    def stack_results(result_folder):
+    def stack_results(result_folder: str) -> dict[str, ndarray[tuple[int, ...], dtype[Any]]]:
         """
         Stack results from a folder of result files.
 
@@ -274,12 +259,12 @@ class DistributedGridSearch:
         Returns:
             A dictionary with stacked results.
         """
-        combined_results = {}
+        combined_results: dict[str, list[Array]] = {}
 
-        result_files = glob.glob(os.path.join(result_folder, '*.pkl'))
+        result_files = glob.glob(os.path.join(result_folder, "*.pkl"))
 
         for file_path in result_files:
-            with open(file_path, 'rb') as f:
+            with open(file_path, "rb") as f:
                 batch_results = pickle.load(f)
 
             for key, value in batch_results.items():
@@ -287,23 +272,15 @@ class DistributedGridSearch:
                     combined_results[key] = []
                 combined_results[key].extend(value)
 
-        combined_results = {
-            key: np.array(value)
-            for key, value in combined_results.items()
-        }
+        array_combined_results = {key: np.array(value) for key, value in combined_results.items()}
 
-        if 'value' in combined_results:
-            sorted_indices = np.argsort(combined_results['value'])
-            sorted_results = {
-                key: value[sorted_indices]
-                for key, value in combined_results.items()
-            }
-            return sorted_results
-        else:
-            raise KeyError("'value' key not found in the combined results.")
+        assert "value" in array_combined_results
+        sorted_indices = np.argsort(array_combined_results["value"])
+        sorted_results = {key: value[sorted_indices] for key, value in array_combined_results.items()}
+        return sorted_results
 
     @staticmethod
-    def last_batch_idx(result_folder):
+    def last_batch_idx(result_folder: str) -> int:
         """
         Determine the index of the last batch processed in the result folder.
 
@@ -311,9 +288,9 @@ class DistributedGridSearch:
             result_folder: Path to the folder containing result files.
 
         Returns:
-            The maximum batch index found, or -1 if no files are present.
+            The maximum batch index found, or 0 if no files are present.
         """
-        result_files = glob.glob(os.path.join(result_folder, '*.pkl'))
+        result_files = glob.glob(os.path.join(result_folder, "*.pkl"))
 
         if not result_files:
             return 0  # No files found
@@ -324,7 +301,7 @@ class DistributedGridSearch:
             filename = os.path.basename(file)
             try:
                 # Parse the batch index from the filename
-                batch_idx = int(filename.split('_')[2])
+                batch_idx = int(filename.split("_")[2])
                 batch_indices.append(batch_idx)
             except (IndexError, ValueError):
                 continue  # Skip files that don't match the expected format
