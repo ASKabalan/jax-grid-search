@@ -13,7 +13,9 @@ dependencies = [
     "jax",
     "tqdm",
     "optax",
-    "jaxtyping"
+    "jaxtyping",
+    "typing-extensions; python_version < '3.11'",
+
 ]
 
 readme = "README.md"

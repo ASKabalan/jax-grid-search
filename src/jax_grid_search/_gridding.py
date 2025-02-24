@@ -3,7 +3,13 @@ import itertools
 import logging
 import os
 import pickle
-from typing import Any, Callable, Dict, Iterator, Optional, Self
+import sys
+from typing import Any, Callable, Dict, Iterator, Optional
+
+if sys.version_info < (3, 11):
+    from typing_extensions import Self
+else:
+    from typing import Self
 
 import jax
 import jax.numpy as jnp
