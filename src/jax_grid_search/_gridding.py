@@ -185,7 +185,8 @@ class DistributedGridSearch:
         progress_bar = tqdm(total=total_batches, desc=f"Processing batches on device {rank}/{size}") if self.progress_bar else None
 
         sample_batch = next(self._batch_generator(rank, size))
-        sample_params = {key: np.array([val[0] for val in values]) for key, values in zip(self.param_keys, sample_batch)}
+        get_element = lambda x : x[0] if x.ndim > 0 else x
+        sample_params = {key: values for key, values in zip(self.param_keys, sample_batch[0])}
         # check if function returns a dictionary with value
         sample_result = jax.eval_shape(self.objective_fn, **sample_params)
         if not isinstance(sample_result, dict) or "value" not in sample_result:
