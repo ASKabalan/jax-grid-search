@@ -59,7 +59,7 @@ class DistributedGridSearch:
         # Create an iterator over all parameter combinations
         self.combinations = list(itertools.product(*values))
 
-        if old_results is not None:
+        if old_results is not None and len(old_results) > 0:
             self.reduce_search_space(search_space, old_results)
 
         self.batch_idx = self.last_batch_idx(self.result_dir)
@@ -178,6 +178,9 @@ class DistributedGridSearch:
         rank = jax.process_index()
         size = jax.process_count()
         assert self.batch_size is not None
+        if len(self.combinations) == 0:
+            print(f"No combinations left for rank {rank}")
+            return
 
         total_batches = len(self.combinations) // (self.batch_size * size)
         log_interval = max(1, int(self.log_every * total_batches)) if self.log_every > 0 else 0
@@ -242,11 +245,22 @@ class DistributedGridSearch:
             completed_param_results[key] = results[key]
 
         # Create set of completed combinations from the results
-        completed_combinations = list(zip(*[results[key].reshape(-1, results[key].shape[-1]) for key in param_names]))
+        completed_combinations = list(zip(*[results[key] for key in param_names]))
 
-        filter_set = {tuple(tuple(arr.tolist()) for arr in tup) for tup in completed_combinations}
 
-        reduced_combinations = [tup for tup in self.combinations if tuple(tuple(arr.tolist()) for arr in tup) not in filter_set]
+        def tuples_equal(tup1, tup2):
+            # Check if both tuples are of the same length
+            if len(tup1) != len(tup2):
+                return False
+            # Compare each corresponding array using np.array_equal
+            return all(jnp.array_equal(a, b) for a, b in zip(tup1, tup2))
+
+        def tuple_in_list(tup, tuple_list):
+            return any(tuples_equal(tup, other) for other in tuple_list)
+
+        print(f"Reducing search space from {len(self.combinations)} - {len(completed_combinations)}")
+        reduced_combinations = [tup for tup in self.combinations if not tuple_in_list(tup, completed_combinations)]
+        print(f"Reduced search space to {len(reduced_combinations)}")
         self.combinations = reduced_combinations
 
     @staticmethod
@@ -275,9 +289,16 @@ class DistributedGridSearch:
 
         array_combined_results = {key: np.array(value) for key, value in combined_results.items()}
 
+        if len(array_combined_results) == 0:
+            return None
+
         assert "value" in array_combined_results
-        sorted_indices = np.argsort(array_combined_results["value"])
-        sorted_results = {key: value[sorted_indices] for key, value in array_combined_results.items()}
+        # Only sort if the value array is 1D
+        if array_combined_results["value"].ndim == 1:
+            sorted_indices = np.argsort(array_combined_results["value"])
+            sorted_results = {key: value[sorted_indices] for key, value in array_combined_results.items()}
+        else:
+            sorted_results = array_combined_results
         return sorted_results
 
     @staticmethod
