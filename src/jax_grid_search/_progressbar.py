@@ -13,7 +13,7 @@ else:
 from jaxtyping import Array, PyTree
 
 
-def _base_cb(id: int, arguments: PyTree[Array, ...]) -> Optional[str]:
+def _base_cb(id: int, arguments: PyTree[Array]) -> Optional[str]:
     return None
 
 
@@ -39,13 +39,13 @@ class ProgressBar:
     def update(
         self: Self,
         idx: int,
-        arguments: PyTree[Array, ...],
+        arguments: PyTree[Array],
         desc_cb: Callable[[int, Any], Optional[str]] = _base_cb,
         total: int = 100,
         n: int = 1,
     ) -> None:
         # Update by n steps (by default, one iteration)
-        def _update_task(idx: int, total: int, arguments: PyTree[Array, ...]) -> None:
+        def _update_task(idx: int, total: int, arguments: PyTree[Array]) -> None:
             idx = int(idx)
             if idx not in self.tasks:
                 self.create_task(idx, total)
