@@ -1,20 +1,16 @@
 from functools import partial
-from typing import Any, Callable, NamedTuple , Optional
+from typing import Any, Callable, NamedTuple, Optional
 
 import jax
 import jax.numpy as jnp
 import optax
 import optax.tree_utils as otu
 from jaxtyping import Array, PyTree
-import time
-import jax.numpy as jnp
-import jax
 
 from ._progressbar import ProgressBar
-    
+
 
 class OptimizerState(NamedTuple):
-
     params: PyTree
     state: PyTree
     updates: PyTree
@@ -26,11 +22,10 @@ class OptimizerState(NamedTuple):
 
 def _debug_callback(
     id: int,
-    arguments : Any,
-) -> None:
-    update_norm , tol , iter_num , value , max_iters = arguments
+    arguments: Any,
+) -> str:
+    update_norm, tol, iter_num, value, max_iters = arguments
     return f"Optimizing {id}... update {update_norm:.0e} => {tol:.0e} at iter {iter_num} value {value:.0e}"
-
 
 
 @partial(jax.jit, static_argnums=(1, 2, 3, 5))
@@ -67,7 +62,7 @@ def optimize(
 
         if progress:
             iter_num = otu.tree_get(carry.state, "count")
-            progress.update(progress_id, (update_norm, tol, iter_num, carry.value, max_iter) , desc_cb=_debug_callback , total=max_iter)
+            progress.update(progress_id, (update_norm, tol, iter_num, carry.value, max_iter), desc_cb=_debug_callback, total=max_iter)
 
         return carry._replace(
             params=params,
@@ -87,11 +82,11 @@ def optimize(
         return (iter_num == 0) | ((iter_num < max_iter) & (update_norm >= tol))
 
     # Initialize optimizer state.
-    init_state = OptimizerState(init_params, opt.init(init_params), init_params, jnp.inf , jnp.inf, jnp.inf, init_params)
+    init_state = OptimizerState(init_params, opt.init(init_params), init_params, jnp.inf, jnp.inf, jnp.inf, init_params)
 
     # Run the while loop.
     if progress:
-        progress.create_task(progress_id , total=max_iter)
+        progress.create_task(progress_id, total=max_iter)
     final_opt_state = jax.lax.while_loop(continuing_criterion, step, init_state)
     if progress:
         progress.finish(progress_id, total=max_iter)

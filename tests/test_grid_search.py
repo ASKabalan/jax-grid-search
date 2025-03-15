@@ -20,6 +20,7 @@ def clean_results_dir() -> Iterator[None]:
     if os.path.exists(results_dir):
         shutil.rmtree(results_dir)
 
+
 # Fixture for the objective function used by grid search.
 # This fixture is parameterized to yield either:
 #   - A function that returns a dict with a scalar value ("scalar")
@@ -38,6 +39,7 @@ def objective_function(request) -> Callable[[Array, Array, Array, Array], dict[s
             return {"value": value.sum()}
         else:
             return {"value": value}
+
     return objective_function
 
 
@@ -54,12 +56,13 @@ def search_space(request) -> dict[str, Array]:
         "w": jnp.arange(4 * request.param).reshape(-1, request.param).squeeze(),
     }
 
+
 # Fixture for an updated search space that depends on the parameterized search_space.
 # It uses the same number of columns p but creates arrays with 5 rows (i.e. total elements = 5*p).
 @pytest.fixture
 def updated_search_space(search_space: dict[str, Array]) -> dict[str, Array]:
-    p = search_space["x"].shape[0]  
-    dim = search_space["x"].ndim 
+    p = search_space["x"].shape[0]
+    dim = search_space["x"].ndim
     new_total = 2 * p
     return {
         "x": jnp.arange(new_total * dim).reshape(-1, dim).squeeze(),
@@ -73,9 +76,7 @@ def test_grid_search(
     objective_function: Callable[[Array, Array, Array, Array], dict[str, Array]],
     search_space: dict[str, Array],
 ) -> None:
-    grid_search = DistributedGridSearch(
-        objective_function, search_space, batch_size=8, progress_bar=True, log_every=0.1
-    )
+    grid_search = DistributedGridSearch(objective_function, search_space, batch_size=8, progress_bar=True, log_every=0.1)
     grid_search.run()
 
     results = grid_search.stack_results("results")
@@ -83,7 +84,7 @@ def test_grid_search(
 
     # For each returned value, reduce it to a scalar if necessary.
     reduced_values = values.mean(axis=tuple(range(1, values.ndim)))
-    
+
     # Assert that the first (reduced) value is the minimum.
     assert reduced_values[0] == jnp.min(reduced_values)
 
@@ -102,9 +103,7 @@ def test_resume(
     updated_search_space: dict[str, Array],
 ) -> None:
     # First run with the initial search space.
-    grid_search = DistributedGridSearch(
-        objective_function, search_space, batch_size=8, progress_bar=True, log_every=0.1
-    )
+    grid_search = DistributedGridSearch(objective_function, search_space, batch_size=8, progress_bar=True, log_every=0.1)
     expected_n_combinations = jax.tree.reduce(lambda x, y: x * y.shape[0], search_space, 1)
     assert grid_search.n_combinations == expected_n_combinations
 
@@ -160,9 +159,7 @@ def test_suggest_batch(
 ) -> None:
     if jax.devices()[0].platform == "cpu":
         pytest.skip("Test only works for GPU devices")
-    grid_search = DistributedGridSearch(
-        objective_function, search_space, batch_size=None, progress_bar=True, log_every=0.1
-    )
+    grid_search = DistributedGridSearch(objective_function, search_space, batch_size=None, progress_bar=True, log_every=0.1)
 
     max_size = grid_search.suggest_batch_size()
 
@@ -183,11 +180,7 @@ def test_suggest_batch(
     )
     mem_analysis = compiled.memory_analysis()
 
-    one_call_mem = (
-        mem_analysis.argument_size_in_bytes
-        + mem_analysis.output_size_in_bytes
-        + mem_analysis.temp_size_in_bytes
-    )
+    one_call_mem = mem_analysis.argument_size_in_bytes + mem_analysis.output_size_in_bytes + mem_analysis.temp_size_in_bytes
 
     assert (max_device_memory / one_call_mem) - max_size < 0.5
 
@@ -205,9 +198,7 @@ def test_bad_objective_fn(
         good_res = objective_function(x, y, z, w)
         return good_res["value"]  # Return only the value and not the dict
 
-    grid_search = DistributedGridSearch(
-        bad_objective_fn, search_space, batch_size=8, progress_bar=True, log_every=0.1
-    )
+    grid_search = DistributedGridSearch(bad_objective_fn, search_space, batch_size=8, progress_bar=True, log_every=0.1)
     with pytest.raises(KeyError):
         grid_search.run()
 
@@ -220,9 +211,7 @@ def test_bad_objective_fn(
         good_res = objective_function(x, y, z, w)
         return {"not_value": good_res["value"]}  # Return an unexpected key
 
-    grid_search = DistributedGridSearch(
-        no_val_objective_fn, search_space, batch_size=8, progress_bar=True, log_every=0.1
-    )
+    grid_search = DistributedGridSearch(no_val_objective_fn, search_space, batch_size=8, progress_bar=True, log_every=0.1)
 
     with pytest.raises(KeyError):
         grid_search.run()

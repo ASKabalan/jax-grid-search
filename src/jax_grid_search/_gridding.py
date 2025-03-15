@@ -188,7 +188,6 @@ class DistributedGridSearch:
         progress_bar = tqdm(total=total_batches, desc=f"Processing batches on device {rank}/{size}") if self.progress_bar else None
 
         sample_batch = next(self._batch_generator(rank, size))
-        get_element = lambda x : x[0] if x.ndim > 0 else x
         sample_params = {key: values for key, values in zip(self.param_keys, sample_batch[0])}
         # check if function returns a dictionary with value
         sample_result = jax.eval_shape(self.objective_fn, **sample_params)
@@ -247,15 +246,14 @@ class DistributedGridSearch:
         # Create set of completed combinations from the results
         completed_combinations = list(zip(*[results[key] for key in param_names]))
 
-
-        def tuples_equal(tup1, tup2):
+        def tuples_equal(tup1: tuple[Array, ...], tup2: tuple[Array, ...]) -> bool:
             # Check if both tuples are of the same length
             if len(tup1) != len(tup2):
                 return False
             # Compare each corresponding array using np.array_equal
             return all(jnp.array_equal(a, b) for a, b in zip(tup1, tup2))
 
-        def tuple_in_list(tup, tuple_list):
+        def tuple_in_list(tup: tuple[Array, ...], tuple_list: list[tuple[Array, ...]]) -> bool:
             return any(tuples_equal(tup, other) for other in tuple_list)
 
         print(f"Reducing search space from {len(self.combinations)} - {len(completed_combinations)}")
@@ -264,7 +262,7 @@ class DistributedGridSearch:
         self.combinations = reduced_combinations
 
     @staticmethod
-    def stack_results(result_folder: str) -> dict[str, ndarray[tuple[int, ...], dtype[Any]]]:
+    def stack_results(result_folder: str) -> Optional[dict[str, ndarray[tuple[int, ...], dtype[Any]]]]:
         """
         Stack results from a folder of result files.
 
