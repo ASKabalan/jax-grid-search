@@ -259,7 +259,7 @@ class DistributedGridSearch:
             return any(tuples_equal(tup, other) for other in tuple_list)
 
         print(f"Reducing search space from {len(self.combinations)} - {len(completed_combinations)}")
-        reduced_combinations = [tup for tup in self.combinations if not tuple_in_list(tup, completed_combinations)]
+        reduced_combinations = [tup for tup in tqdm(self.combinations) if not tuple_in_list(tup, completed_combinations)]
         print(f"Reduced search space to {len(reduced_combinations)}")
         self.combinations = reduced_combinations
 
@@ -294,11 +294,9 @@ class DistributedGridSearch:
 
         assert "value" in array_combined_results
         # Only sort if the value array is 1D
-        if array_combined_results["value"].ndim == 1:
-            sorted_indices = np.argsort(array_combined_results["value"])
-            sorted_results = {key: value[sorted_indices] for key, value in array_combined_results.items()}
-        else:
-            sorted_results = array_combined_results
+        sorted_indices = np.argsort(array_combined_results["value"].mean(axis=tuple(range(1, array_combined_results["value"].ndim))))
+        sorted_results = {key: value[sorted_indices] for key, value in array_combined_results.items()}
+
         return sorted_results
 
     @staticmethod
