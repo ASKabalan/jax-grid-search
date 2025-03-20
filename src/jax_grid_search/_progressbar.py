@@ -67,9 +67,6 @@ class ProgressBar:
     def close(self) -> None:
         self.progress.stop()
 
-    def __del__(self) -> None:
-        self.progress.stop()
-
     def __enter__(self: Self) -> Self:
         self.progress.__enter__()
         return self
