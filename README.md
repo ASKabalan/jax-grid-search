@@ -8,10 +8,10 @@
 
 This repository provides two complementary optimization tools:
 
-1. **Distributed Grid Search for Discrete Optimization:**  
+1. **Distributed Grid Search for Discrete Optimization:**
    Explore a parameter space by evaluating a user-defined objective function on a grid of discrete values. The search runs in parallel across available processes, automatically handling batching, progress tracking, and result aggregation.
 
-2. **Continuous Optimization with Optax:**  
+2. **Continuous Optimization with Optax:**
    Minimize continuous functions using gradient-based methods (such as LBFGS). This routine leverages Optax for iterative parameter updates and includes built-in progress monitoring.
 
 ---
@@ -79,7 +79,7 @@ grid_search = DistributedGridSearch(
     search_space=search_space,
     progress_bar=True,     # Enable progress updates
     log_every=0.1,         # Log progress every 10%
-    result_dir="results"   # Directory for intermediate results 
+    result_dir="results"   # Directory for intermediate results
     old_results=results    # Pass the previous results to resume the search
 )
 grid_search.run()
@@ -106,7 +106,7 @@ grid_search = DistributedGridSearch(
     search_space=search_space,
     progress_bar=True,     # Enable progress updates
     log_every=0.1,         # Log progress every 10%
-    result_dir="results"   # Directory for intermediate results 
+    result_dir="results"   # Directory for intermediate results
     old_results=results    # Pass the previous results to resume the search
 )
 grid_search.run()
@@ -161,7 +161,7 @@ import optax
 
 # Define multiple objective functions
 def objective_fn(x , normal):
-    return jnp.sum(((x - 3.0) ** 2) + normal) 
+    return jnp.sum(((x - 3.0) ** 2) + normal)
 
 with ProgressBar() as p:
 
@@ -182,11 +182,11 @@ with ProgressBar() as p:
         )
 
         return best_params
-    
+
     jax.vmap(solve_one)(jnp.arange(10))
 
 ```
 ### 3. Optimizing Likelihood parameters and models
 
-You can use the continuous optimization to optimize the parameters of a model that is defined in a function. 
+You can use the continuous optimization to optimize the parameters of a model that is defined in a function.
 For performance purposes, you need to make sure that the discrete parameters that can control the likelihood model can be jitted (using `lax.cond` for example or other lax control flow functions).
