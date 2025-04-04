@@ -251,7 +251,8 @@ class DistributedGridSearch:
 
         if progress_bar:
             progress_bar.close()
-
+        jax.experimental.multihost_utils.sync_global_devices("DONE")
+        
     def reduce_search_space(self: Self, search_space: dict[str, Array], results: dict[str, Array]) -> None:
         """
         Reduce the search space by removing combinations already processed.

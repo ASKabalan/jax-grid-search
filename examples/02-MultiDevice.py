@@ -10,6 +10,7 @@ import jax.numpy as jnp
 
 from jax_grid_search import DistributedGridSearch
 
+old_res = DistributedGridSearch.stack_results('results')
 
 def objective_function(x, y, z, w):
     value = x**2 + y**2 + z**2 - w**2
@@ -25,7 +26,7 @@ search_space = {
 }
 
 
-grid_search = DistributedGridSearch(objective_function, search_space, batch_size=30, progress_bar=True, log_every=0.1)
+grid_search = DistributedGridSearch(objective_function, search_space, batch_size=30, progress_bar=True, log_every=0.1, old_results=old_res)
 
 
 grid_search.run()
