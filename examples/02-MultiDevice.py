@@ -10,7 +10,8 @@ import jax.numpy as jnp
 
 from jax_grid_search import DistributedGridSearch
 
-old_res = DistributedGridSearch.stack_results('results')
+old_res = DistributedGridSearch.stack_results("results")
+
 
 def objective_function(x, y, z, w):
     value = x**2 + y**2 + z**2 - w**2
