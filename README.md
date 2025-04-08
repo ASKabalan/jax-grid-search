@@ -190,3 +190,15 @@ with ProgressBar() as p:
 
 You can use the continuous optimization to optimize the parameters of a model that is defined in a function.
 For performance purposes, you need to make sure that the discrete parameters that can control the likelihood model can be jitted (using `lax.cond` for example or other lax control flow functions).
+
+
+## Citation
+
+@misc{kabalan2025jaxgridsearch,
+  author       = {Kabalan, Wassim},
+  title        = {JAX Distributed Grid Search for Hyperparameter Tuning},
+  year         = {2025},
+  version      = {0.1.5},
+  howpublished = {\url{https://github.com/asKabalan/jax-grid-search}},
+  note         = {Accessed: 2025-04-08}
+}
