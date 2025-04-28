@@ -282,21 +282,39 @@ class DistributedGridSearch:
         self.n_combinations = len(self.combinations)
 
     @staticmethod
-    def stack_results(result_folder: str) -> Optional[dict[str, Array]]:
+    def stack_results(result_folder: str, batch_size: Optional[int] = None, batch_index: int = 0) -> Optional[dict[str, Array]]:
         """
-        Stack results from a folder of result files.
+        Stack a batch of results from a folder of result files.
 
         Args:
-            result_folder: Folder containing .pkl files with batch results.
+            result_folder: Folder containing .pkl files.
+            batch_size: Number of files to load per batch.
+            batch_index: Index of batch (starting from 0).
 
         Returns:
-            A dictionary with stacked results.
+            Dictionary of stacked results (or None if empty).
         """
-        combined_results: dict[str, CombinationsType] = {}
+        result_files = sorted(glob.glob(os.path.join(result_folder, "*.pkl")))
 
-        result_files = glob.glob(os.path.join(result_folder, "*.pkl"))
+        if len(result_files) == 0:
+            print("No result files found.")
+            return None
 
-        for file_path in result_files:
+        if batch_size is None:
+            batch_size = len(result_files)
+
+        start = batch_index * batch_size
+        end = start + batch_size
+        print(f"Loading from {start} to {end} (batch size {batch_size})")
+        selected_files = result_files[start:end]
+
+        if len(selected_files) == 0:
+            print(f"No files in batch {batch_index}.")
+            return None
+
+        combined_results: dict[str, list[Array]] = {}
+
+        for file_path in tqdm(selected_files, desc="Loading results"):
             with open(file_path, "rb") as f:
                 batch_results = pickle.load(f)
 
@@ -305,7 +323,11 @@ class DistributedGridSearch:
                     combined_results[key] = []
                 combined_results[key].extend(value)
 
-        array_combined_results: dict[str, Array] = {key: np.array(value) for key, value in combined_results.items()}  # type: ignore[misc]
+        # Convert to numpy arrays
+        array_combined_results: dict[str, Array] = {
+            key: np.array(value)  # type: ignore[misc]
+            for key, value in tqdm(combined_results.items(), desc="Converting to arrays")
+        }
 
         if len(array_combined_results) == 0:
             return None
@@ -316,6 +338,23 @@ class DistributedGridSearch:
         sorted_results = {key: value[sorted_indices] for key, value in array_combined_results.items()}
 
         return sorted_results
+
+    @staticmethod
+    def get_num_batches(result_folder: str, batch_size: int) -> int:
+        """
+        Get number of available batches given batch size.
+
+        Args:
+            result_folder: Folder containing .pkl files.
+            batch_size: Batch size.
+
+        Returns:
+            Number of batches.
+        """
+        result_files = glob.glob(os.path.join(result_folder, "*.pkl"))
+        num_files = len(result_files)
+        num_batches = (num_files + batch_size - 1) // batch_size  # ceil division
+        return num_batches
 
     @staticmethod
     def last_batch_idx(result_folder: str) -> int:
