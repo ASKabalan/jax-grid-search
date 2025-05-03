@@ -100,12 +100,12 @@ def optimize(
 
     # Was the last evaluation better than the best?
     best_params = jax.tree.map(
-        lambda x, y: jnp.where(final_opt_state.best_val < final_opt_state.value, x, y),
+        lambda x, y: jnp.where((final_opt_state.best_val < final_opt_state.value) | jnp.isnan(final_opt_state.value), x, y),
         final_opt_state.best_params,
         final_opt_state.params,
     )
     best_value: float = jnp.where(
-        final_opt_state.best_val < final_opt_state.value,
+        (final_opt_state.best_val < final_opt_state.value) | jnp.isnan(final_opt_state.value),
         final_opt_state.best_val,
         final_opt_state.value,
     )  # type: ignore[assignment]
