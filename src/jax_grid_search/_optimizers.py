@@ -18,6 +18,7 @@ class OptimizerState(NamedTuple):
     value: float
     best_val: float
     best_params: PyTree
+    update_history: Optional[Array]
 
 
 def _debug_callback(
@@ -28,7 +29,7 @@ def _debug_callback(
     return f"Optimizing {id}... update {update_norm:.0e} => {tol:.0e} at iter {iter_num} value {value:.0e}"
 
 
-@partial(jax.jit, static_argnums=(1, 2, 3, 5))
+@partial(jax.jit, static_argnums=(1, 2, 3, 5, 9))
 def optimize(
     init_params: Array,
     fun: Callable[[Array], Array],
@@ -39,10 +40,12 @@ def optimize(
     progress_id: int = 0,
     upper_bound: Optional[Array] = None,
     lower_bound: Optional[Array] = None,
+    log_updates: bool = False,
     **kwargs: Any,
 ) -> tuple[Array, OptimizerState]:
     # Define a function that computes both value and gradient of the objective.
     value_and_grad_fun = jax.value_and_grad(fun)
+    update_history = jnp.zeros((max_iter, 2)) if log_updates else None
 
     # Single optimization step.
     def step(carry: OptimizerState) -> OptimizerState:
@@ -52,13 +55,17 @@ def optimize(
         params = optax.apply_updates(carry.params, updates)  # Update params
         if upper_bound is not None and lower_bound is not None:
             params = optax.projections.projection_box(params, lower_bound, upper_bound)  # Apply box constraints
+        if log_updates and carry.update_history is not None:
+            iter_num = otu.tree_get(carry.state, "count")
+            to_log = jnp.array([update_norm, value])
+            carry = carry._replace(update_history=carry.update_history.at[iter_num].set(to_log))
 
         best_params = jax.tree.map(
-            lambda x, y: jnp.where(carry.best_val < value, x, y),
+            lambda x, y: jnp.where((carry.best_val < value) | jnp.isnan(value), x, y),
             carry.best_params,
             carry.params,
         )
-        best_val = jnp.where(carry.best_val < value, carry.best_val, value)
+        best_val = jnp.where((carry.best_val < value) | jnp.isnan(value), carry.best_val, value)
 
         if progress:
             iter_num = otu.tree_get(carry.state, "count")
@@ -82,7 +89,7 @@ def optimize(
         return (iter_num == 0) | ((iter_num < max_iter) & (update_norm >= tol))
 
     # Initialize optimizer state.
-    init_state = OptimizerState(init_params, opt.init(init_params), init_params, jnp.inf, jnp.inf, jnp.inf, init_params)
+    init_state = OptimizerState(init_params, opt.init(init_params), init_params, jnp.inf, jnp.inf, jnp.inf, init_params, update_history)
 
     # Run the while loop.
     if progress:
