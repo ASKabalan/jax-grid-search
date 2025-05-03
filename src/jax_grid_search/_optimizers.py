@@ -45,7 +45,8 @@ def optimize(
 ) -> tuple[Array, OptimizerState]:
     # Define a function that computes both value and gradient of the objective.
     value_and_grad_fun = jax.value_and_grad(fun)
-    update_history = jnp.zeros((max_iter , 2))  if log_updates else None
+    update_history = jnp.zeros((max_iter, 2)) if log_updates else None
+
     # Single optimization step.
     def step(carry: OptimizerState) -> OptimizerState:
         value, grad = value_and_grad_fun(carry.params, **kwargs)  # Compute value and gradient
@@ -54,7 +55,7 @@ def optimize(
         params = optax.apply_updates(carry.params, updates)  # Update params
         if upper_bound is not None and lower_bound is not None:
             params = optax.projections.projection_box(params, lower_bound, upper_bound)  # Apply box constraints
-        if log_updates:
+        if log_updates and carry.update_history is not None:
             iter_num = otu.tree_get(carry.state, "count")
             to_log = jnp.array([update_norm, value])
             carry = carry._replace(update_history=carry.update_history.at[iter_num].set(to_log))
@@ -88,7 +89,7 @@ def optimize(
         return (iter_num == 0) | ((iter_num < max_iter) & (update_norm >= tol))
 
     # Initialize optimizer state.
-    init_state = OptimizerState(init_params, opt.init(init_params), init_params, jnp.inf, jnp.inf, jnp.inf, init_params , update_history)
+    init_state = OptimizerState(init_params, opt.init(init_params), init_params, jnp.inf, jnp.inf, jnp.inf, init_params, update_history)
 
     # Run the while loop.
     if progress:
